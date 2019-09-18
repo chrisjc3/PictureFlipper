@@ -20,6 +20,9 @@ import os
 import re
 import shutil
 import screeninfo
+from PIL import Image, ImageChops
+import math, operator
+import imagehash
 
 def defaultThread(interval, func, *args):
     stopped = Event()
@@ -50,7 +53,6 @@ def call_deleteFile(event):
     
 def call_addFile(event):
     addFile()
-
 
 def showNextImage():
     global q
@@ -133,25 +135,6 @@ def findFolder():
         fpath_text.config(state=DISABLED)
         getFolderStats(folder_selected)
 
-def getFolderStats(path):
-    global flist
-    flist = []
-    accepted = ("jpeg","png","jpg","gif","bmp","tif","tiff","raw")
-    for (dirpath, dirnames, filenames) in os.walk(path):
-        for file in filenames:
-            if file[-3:] in accepted and \
-            "\\add\\" not in os.path.join(dirpath, file) \
-            and \
-            "\\del\\" not in os.path.join(dirpath, file):
-                flist.append(os.path.join(dirpath, file))
-    try:
-        os.mkdir(folder_selected + "/add")
-        os.mkdir(folder_selected + "/del")
-    except: pass
-    flist.sort()
-    updatefpathq()
-    showNextImage()
-
 def deleteFile():
     global q
     fname = os.path.basename(flist[q])
@@ -206,7 +189,119 @@ def call_killimg(event):
     master.lift()
     master.focus_force()
 
+def getFolderStats(path):
+    global flist
+    global hlist
+    flist = []
+    hlist = []
+    accepted = ("jpeg","png","jpg","gif","bmp","tif","tiff","raw")
+    for (dirpath, dirnames, filenames) in os.walk(path):
+        for file in filenames:
+            if file[-3:] in accepted and \
+            "\\add\\" not in os.path.join(dirpath, file) \
+            and \
+            "\\del\\" not in os.path.join(dirpath, file):
+                flist.append(os.path.join(dirpath, file))
+    try:
+        os.mkdir(folder_selected + "/add")
+        os.mkdir(folder_selected + "/del")
+    except: pass
+    flist.sort()
+    updatefpathq()
+    showNextImage()
 
+def genhashes(): 
+    global hlist
+    cv2.destroyAllWindows()
+    for img in flist:
+        try:
+            xhash = imagehash.dhash(Image.open(img))
+            hlist.append(xhash)
+        except: pass
+    hashes_button.configure(text="Check\nHashes", command=checkhashes)
+    master.bind("<Delete>", call_checkhashes)
+    print("Hashes Generated")
+    master.lift()
+    master.focus_force()
+
+def call_checkhashes(event):
+    checkhashes()
+    
+def checkhashes():
+    global dupelist
+    global dupeiterator
+    global temptk
+    dupeiterator = 0
+    dupelist = []
+    for i in range(len(hlist)):
+        if flist[q] != flist[i] and \
+        hlist[q] == hlist[i]:
+            dupelist.append(flist[i])
+    if len(dupelist)>0:
+        print("Found:" + str(len(dupelist)))
+        cv2.destroyAllWindows()
+        temptk = tk.Tk()
+        temptk.title("Dupe Handler")       
+        autoLabel = tk.Label(temptk, text="Add or Delete")
+        sourcefile = tk.Button(temptk, text="Move Source", command=moveSrcFile)
+        sourcefile.grid(row=0, column=0, sticky=N+W+E+S,pady=10)
+        dupefile = tk.Button(temptk, text="Move Dupe", command=moveDupFile)
+        dupefile.grid(row=1, column=0, sticky=N+W+E+S,pady=10)
+        moveon = tk.Button(temptk, text="Next", command=leaveFile)
+        moveon.grid(row=2, column=0, sticky=N+W+E+S,pady=10)
+        popupDupe(cv2.imread(flist[q],
+                         cv2.IMREAD_UNCHANGED),
+                  "Source",0)
+        popupDupe(cv2.imread(dupelist[dupeiterator],
+                         cv2.IMREAD_UNCHANGED),
+                  "Dupe?",1)
+    else: print("No dupes found.")
+
+def moveSrcFile():
+    moveFile(flist[q])
+
+def moveDupFile():
+    moveFile(dupelist[dupeiterator])
+    
+def leaveFile():
+    global temptk
+    global dupeiterator
+    dupeiterator+=1
+    if dupeiterator<len(dupelist):
+        popupDupe(cv2.imread(dupelist[dupeiterator],
+                         cv2.IMREAD_UNCHANGED),"Dupe?",1)
+    else:
+        temptk.destroy()
+        cv2.destroyAllWindows()
+        master.focus_force()
+
+def moveFile(path):
+    global temptk
+    global dupeiterator
+    fname = os.path.basename(path)
+    shutil.move(path, folder_selected + "/del/" + fname)
+    dupeiterator+=1
+    if dupeiterator<len(dupelist):
+        popupDupe(cv2.imread(dupelist[dupeiterator],
+                         cv2.IMREAD_UNCHANGED),"Dupe?",1)
+    else:
+        temptk.destroy()
+        cv2.destroyAllWindows()
+        master.focus_force()
+
+def popupDupe(img, name, scrn):
+    screen_id = scrn
+    screen = screeninfo.get_monitors()[screen_id]
+    scale_width = screen.width / img.shape[1]
+    scale_height = screen.height / img.shape[0]
+    scale = min(scale_width, scale_height)
+    window_width = int(img.shape[1] * scale)
+    window_height = int(img.shape[0] * scale)
+    cv2.namedWindow(str(name), cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(str(name), window_width, window_height)
+    cv2.imshow(str(name), img)
+
+        
 global flist
 global q
 flist = []
@@ -284,6 +379,9 @@ minus_button.grid(row=6, column=1, sticky=N+W)
 autoLabel2.grid(row=5, column=2, columnspan=1, sticky=N+W)
 autotimerent.grid(row=6, column=2, sticky=N+W)
 autoNextTask()
+
+hashes_button = tk.Button(master, text="Generate\nHashes", command=genhashes)
+hashes_button.grid(row=6, column=1, sticky=N+E+S)
 
 master.bind("<Insert>", call_killimg)
 
