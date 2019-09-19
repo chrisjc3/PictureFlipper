@@ -23,6 +23,7 @@ import screeninfo
 from PIL import Image, ImageChops
 import math, operator
 import imagehash
+import pandas as pd
 
 def defaultThread(interval, func, *args):
     stopped = Event()
@@ -39,14 +40,10 @@ def focus_next_widget(event):
 def call_findFolder(event):
     findFolder()
     
-def call_showNextImage(event):
-    showNextImage()
+
     
 def call_showPrevImage(event):
     showPrevImage()
-
-def call_incrementq(event):
-    incrementq()
     
 def call_deleteFile(event):
     deleteFile()
@@ -210,14 +207,28 @@ def getFolderStats(path):
     updatefpathq()
     showNextImage()
 
-def genhashes(): 
+def call_showNextImage(event):
+    showNextImage()
+
+def call_incrementq(event):
+    incrementq()
+
+    #should be some kind of optional checkbox
+    checkhashes()
+    
+def genhashes():
+    global df
+    ###wonder if dhash is the best for this now
     global hlist
     cv2.destroyAllWindows()
     for img in flist:
         try:
-            xhash = imagehash.dhash(Image.open(img))
-            hlist.append(xhash)
+            hlist.append(imagehash.dhash(Image.open(img)))
         except: pass
+
+    df = pd.DataFrame(np.column_stack([flist, hlist]),
+                      columns=['path','hash'])
+    df.to_csv("data.csv", index=False)
     hashes_button.configure(text="Check\nHashes", command=checkhashes)
     master.bind("<Delete>", call_checkhashes)
     print("Hashes Generated")
@@ -231,16 +242,30 @@ def checkhashes():
     global dupelist
     global dupeiterator
     global temptk
+    global df
     dupeiterator = 0
     dupelist = []
-    for i in range(len(hlist)):
-        if flist[q] != flist[i] and \
-        hlist[q] == hlist[i]:
-            dupelist.append(flist[i])
-    if len(dupelist)>0:
+    found = 0
+    
+    hlist = df['hash'].tolist()
+    for i in range(len(df)):
+        if df.loc[q, 'path'] != df.loc[i, 'path'] and \
+        df.loc[q, 'hash'] == df.loc[i, 'hash']:
+            df.loc[i, 'x'] = "X"
+            found=1
+    if found == 1:
+        dupelist = df.loc[df['x'] == "X"]
+        print(dupelist)
         print("Found:" + str(len(dupelist)))
         cv2.destroyAllWindows()
         temptk = tk.Tk()
+        w = 200 
+        h = 300 
+        ws = temptk.winfo_screenwidth()
+        hs = temptk.winfo_screenheight()
+        x = (ws/2) - (w/2)
+        y = (hs/2) - (h/2)
+        temptk.geometry('%dx%d+%d+%d' % (w, h, x, y))
         temptk.title("Dupe Handler")       
         autoLabel = tk.Label(temptk, text="Add or Delete")
         sourcefile = tk.Button(temptk, text="Move Source", command=moveSrcFile)
@@ -248,45 +273,67 @@ def checkhashes():
         dupefile = tk.Button(temptk, text="Move Dupe", command=moveDupFile)
         dupefile.grid(row=1, column=0, sticky=N+W+E+S,pady=10)
         moveon = tk.Button(temptk, text="Next", command=leaveFile)
+        temptk.bind("<Insert>", call_leaveit)
         moveon.grid(row=2, column=0, sticky=N+W+E+S,pady=10)
+
         popupDupe(cv2.imread(flist[q],
                          cv2.IMREAD_UNCHANGED),
                   "Source",0)
-        popupDupe(cv2.imread(dupelist[dupeiterator],
+        popupDupe(cv2.imread(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'],
                          cv2.IMREAD_UNCHANGED),
                   "Dupe?",1)
+
+        temptk.lift()
+        temptk.focus_force()
     else: print("No dupes found.")
 
+def call_leaveit(event):
+    leaveFile()
+
 def moveSrcFile():
-    moveFile(flist[q])
+    global df
+    print("MOVING: " + str(flist[q]))
+    moveFile(df.iloc[[q]]['path'])
+    df.drop([q], 0, inplace=True)
 
 def moveDupFile():
-    moveFile(dupelist[dupeiterator])
-    
+    global df
+    print("MOVING: " + str(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path']))
+    moveFile(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'])
+    df.drop([dupelist.iloc[[dupeiterator]].index.item()], 0, inplace=True)
+
+
+def moveFile(path):
+    global temptk
+    global dupeiterator
+    print("Moving: " + str(path))
+    fname = os.path.basename(path)
+    shutil.move(path, folder_selected + "/del/" + fname)
+    dupeiterator+=1
+    if dupeiterator<len(dupelist):    
+        popupDupe(cv2.imread(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'],
+                         cv2.IMREAD_UNCHANGED),
+                  "Dupe?",1)
+    else:
+        del df['x']
+        temptk.destroy()
+        cv2.destroyAllWindows()
+        incrementq()
+        master.focus_force()
+   
 def leaveFile():
     global temptk
     global dupeiterator
     dupeiterator+=1
     if dupeiterator<len(dupelist):
-        popupDupe(cv2.imread(dupelist[dupeiterator],
-                         cv2.IMREAD_UNCHANGED),"Dupe?",1)
+        popupDupe(cv2.imread(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'],
+                         cv2.IMREAD_UNCHANGED),
+                  "Dupe?",1)
     else:
+        del df['x']
         temptk.destroy()
         cv2.destroyAllWindows()
-        master.focus_force()
-
-def moveFile(path):
-    global temptk
-    global dupeiterator
-    fname = os.path.basename(path)
-    shutil.move(path, folder_selected + "/del/" + fname)
-    dupeiterator+=1
-    if dupeiterator<len(dupelist):
-        popupDupe(cv2.imread(dupelist[dupeiterator],
-                         cv2.IMREAD_UNCHANGED),"Dupe?",1)
-    else:
-        temptk.destroy()
-        cv2.destroyAllWindows()
+        incrementq()
         master.focus_force()
 
 def popupDupe(img, name, scrn):
@@ -303,11 +350,21 @@ def popupDupe(img, name, scrn):
 
         
 global flist
+global hlist
 global q
+global df
 flist = []
 q = 0
 master = tk.Tk()
 master.title("Picture Sorter")
+
+try:
+    df = pd.read_csv("data.csv")
+    hlist = df['hash'].tolist()
+    print("Hash table found!")
+except:
+    df = pd.DataFrame()
+    print("No hash table found.")
 
 fpath_str = tk.StringVar(master)
 folder = tk.Button(master, text="Select\nFolder", command=findFolder)
@@ -380,9 +437,14 @@ autoLabel2.grid(row=5, column=2, columnspan=1, sticky=N+W)
 autotimerent.grid(row=6, column=2, sticky=N+W)
 autoNextTask()
 
-hashes_button = tk.Button(master, text="Generate\nHashes", command=genhashes)
-hashes_button.grid(row=6, column=1, sticky=N+E+S)
-
+if df.empty:
+    hashes_button = tk.Button(master, text="Generate\nHashes", command=genhashes)
+    hashes_button.grid(row=6, column=1, sticky=N+E+S)
+else:
+    hashes_button = tk.Button(master, text="Check\nHashes", command=checkhashes)
+    hashes_button.grid(row=6, column=1, sticky=N+E+S)
+    master.bind("<Delete>", call_checkhashes)
+    
 master.bind("<Insert>", call_killimg)
 
 tk.mainloop()
