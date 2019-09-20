@@ -27,6 +27,7 @@ import pandas as pd
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
+pd.set_option('display.max_colwidth', -1)
 
 def defaultThread(interval, func, *args):
     stopped = Event()
@@ -243,7 +244,7 @@ def checkhashes():
 
     for i in range(len(df)):
         if df.loc[q, 'path'] != df.loc[i, 'path'] and \
-        abs(int(df.loc[q, 'hash'],16) - int(df.loc[i, 'hash'],16))<100000000000000:
+        abs(int(str(df.loc[q, 'hash']),16) - int(str(df.loc[i, 'hash']),16))<100000000000000:
         #finding a value with acceptable amounts of false positives...
             df.loc[i, 'x'] = "X"
             found=1
@@ -269,10 +270,12 @@ def checkhashes():
         moveon = tk.Button(temptk, text="Next", command=leaveFile)
         temptk.bind("<Insert>", call_leaveit)
         moveon.grid(row=2, column=0, sticky=N+W+E+S,pady=10)
-
+        print("Popping: " + str(flist[q]))
         popupDupe(cv2.imread(flist[q],
                          cv2.IMREAD_UNCHANGED),
                   "Source",0)
+
+        print("Popping: " + str(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path']))
         popupDupe(cv2.imread(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'],
                          cv2.IMREAD_UNCHANGED),
                   "Dupe?",1)
@@ -286,34 +289,39 @@ def call_leaveit(event):
 def moveSrcFile():
     global df
     global flist
-    print("MOVING SOURCE: " + str(flist[q]))
-    moveFile(df.iloc[[q]]['path'])
-    df.drop([q], 0, inplace=True)
+    print("MOVING SOURCE: " + str(df.loc[q]['path']))
+    moveFile(str(df.loc[q]['path']))
+    df = df.drop([q], 0)
+    del df['x']
     df.to_csv("data.csv", index=False)
-    temptk.destroy()
-    cv2.destroyAllWindows()
-    attemptReadHashTable()
-    checkhashes()
-    
-def call_incrementq(event):
-    incrementq()
-    if hashonoff.get() == 1: 
-        checkhashes()
-        
-def moveDupFile():
-    global df
-    global flist
-    print("MOVING DUPE: " + str(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path']))
-    moveFile(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'])
-    #not sure if it's actually dropping...
-    df.drop([dupelist.index.values.astype(int)[0]], 0, inplace=True)
-    df.to_csv("data.csv", index=False)
+    print("Hash table updated.")
     temptk.destroy()
     cv2.destroyAllWindows()
     attemptReadHashTable()
     checkhashes()
 
-    
+def call_incrementq(event):
+    incrementq()
+    if hashonoff.get() == 1: 
+        checkhashes()
+
+def moveDupFile():
+    global df
+    global flist
+    print("MOVING DUPE: " + str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))
+    index = int(dupelist.iloc[[dupeiterator]].index.to_numpy()[0])
+    moveFile(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip())
+    print("PATH: " + str(index, 'path'].to_string(index=False).strip()))
+    print("DF INDEX: " + str(index))
+    df = df.drop(index, 0)
+    del df['x']
+    df.to_csv("data.csv", index=False)
+    print("Hash table updated.")
+    temptk.destroy()
+    cv2.destroyAllWindows()
+    attemptReadHashTable()
+    checkhashes()
+
 def moveFile(path):
     global temptk
     global dupeiterator
@@ -321,8 +329,9 @@ def moveFile(path):
     fname = os.path.basename(path)
     shutil.move(path, folder_selected + "/del/" + fname)
     dupeiterator+=1
-    if dupeiterator<len(dupelist):    
-        popupDupe(cv2.imread(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'],
+    if dupeiterator<len(dupelist):
+        print("Popping: " + str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))
+        popupDupe(cv2.imread(str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()),
                          cv2.IMREAD_UNCHANGED),
                   "Dupe?",1)
     else:
@@ -340,7 +349,8 @@ def leaveFile():
     global df
     dupeiterator+=1
     if dupeiterator<len(dupelist):
-        popupDupe(cv2.imread(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'],
+        print("Popping: " + str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))
+        popupDupe(cv2.imread(str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()),
                          cv2.IMREAD_UNCHANGED),
                   "Dupe?",1)
     else:
@@ -353,16 +363,18 @@ def leaveFile():
         master.focus_force()
 
 def popupDupe(img, name, scrn):
-    screen_id = scrn
-    screen = screeninfo.get_monitors()[screen_id]
-    scale_width = screen.width / img.shape[1]
-    scale_height = screen.height / img.shape[0]
-    scale = min(scale_width, scale_height)
-    window_width = int(img.shape[1] * scale)
-    window_height = int(img.shape[0] * scale)
-    cv2.namedWindow(str(name), cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(str(name), window_width, window_height)
-    cv2.imshow(str(name), img)
+    try:
+        screen_id = scrn
+        screen = screeninfo.get_monitors()[screen_id]
+        scale_width = screen.width / img.shape[1]
+        scale_height = screen.height / img.shape[0]
+        scale = min(scale_width, scale_height)
+        window_width = int(img.shape[1] * scale)
+        window_height = int(img.shape[0] * scale)
+        cv2.namedWindow(str(name), cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(str(name), window_width, window_height)
+        cv2.imshow(str(name), img)
+    except: print("Issue: probably a bad index from drop")
 
 def attemptReadHashTable():
     global flist
