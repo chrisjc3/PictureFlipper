@@ -24,6 +24,9 @@ from PIL import Image, ImageChops
 import math, operator
 import imagehash
 import pandas as pd
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 def defaultThread(interval, func, *args):
     stopped = Event()
@@ -40,8 +43,6 @@ def focus_next_widget(event):
 def call_findFolder(event):
     findFolder()
     
-
-    
 def call_showPrevImage(event):
     showPrevImage()
     
@@ -50,17 +51,6 @@ def call_deleteFile(event):
     
 def call_addFile(event):
     addFile()
-
-def showNextImage():
-    global q
-    path = flist[q]
-    
-    img = cv2.imread(path,
-                     cv2.IMREAD_UNCHANGED)
-    makewindow(img)
-    updatefpathq()
-    master.lift()
-    master.focus_force()
 
 def showPrevImage():
     global q
@@ -102,8 +92,40 @@ def makewindow(img):
         path = flist[q]
         img = cv2.imread(path,
                          cv2.IMREAD_UNCHANGED)
-        makewindow(img)
-    
+        makewindow(img)  
+
+def findFolder():
+    global folder_selected
+    folder_selected = filedialog.askdirectory()
+    if folder_selected != "":
+        fpath_str.set(folder_selected)
+        fpath_text.config(state=NORMAL)
+        fpath_text.delete(1.0, END)
+        fpath_text.insert(END, folder_selected)
+        fpath_text.config(state=DISABLED)
+        getFolderStats(folder_selected)
+
+def getFolderStats(path):
+    global flist
+    global hlist
+    if flist == []:
+        hlist = []
+        accepted = ("jpeg","png","jpg","gif","bmp","tif","tiff","raw")
+        for (dirpath, dirnames, filenames) in os.walk(path):
+            for file in filenames:
+                if file[-3:] in accepted and \
+                "\\add\\" not in os.path.join(dirpath, file) \
+                and \
+                "\\del\\" not in os.path.join(dirpath, file):
+                    flist.append(os.path.join(dirpath, file))
+        try:
+            os.mkdir(folder_selected + "/add")
+            os.mkdir(folder_selected + "/del")
+        except: pass
+        flist.sort()
+    updatefpathq()
+    showNextImage()
+
 def updatefpathq():
     global q
     fpath_queue.config(state=NORMAL)
@@ -121,16 +143,16 @@ def updatefpathq():
         fpath_curr.insert(END, "Out of files...")
     fpath_curr.config(state=DISABLED)
 
-def findFolder():
-    global folder_selected
-    folder_selected = filedialog.askdirectory()
-    if folder_selected != "":
-        fpath_str.set(folder_selected)
-        fpath_text.config(state=NORMAL)
-        fpath_text.delete(1.0, END)
-        fpath_text.insert(END, folder_selected)
-        fpath_text.config(state=DISABLED)
-        getFolderStats(folder_selected)
+def showNextImage():
+    global q
+    path = flist[q]
+    
+    img = cv2.imread(path,
+                     cv2.IMREAD_UNCHANGED)
+    makewindow(img)
+    updatefpathq()
+    master.lift()
+    master.focus_force()
 
 def deleteFile():
     global q
@@ -186,46 +208,17 @@ def call_killimg(event):
     master.lift()
     master.focus_force()
 
-def getFolderStats(path):
-    global flist
-    global hlist
-    flist = []
-    hlist = []
-    accepted = ("jpeg","png","jpg","gif","bmp","tif","tiff","raw")
-    for (dirpath, dirnames, filenames) in os.walk(path):
-        for file in filenames:
-            if file[-3:] in accepted and \
-            "\\add\\" not in os.path.join(dirpath, file) \
-            and \
-            "\\del\\" not in os.path.join(dirpath, file):
-                flist.append(os.path.join(dirpath, file))
-    try:
-        os.mkdir(folder_selected + "/add")
-        os.mkdir(folder_selected + "/del")
-    except: pass
-    flist.sort()
-    updatefpathq()
-    showNextImage()
-
 def call_showNextImage(event):
     showNextImage()
-
-def call_incrementq(event):
-    incrementq()
-
-    #should be some kind of optional checkbox
-    checkhashes()
     
 def genhashes():
     global df
-    ###wonder if dhash is the best for this now
     global hlist
     cv2.destroyAllWindows()
     for img in flist:
         try:
-            hlist.append(imagehash.dhash(Image.open(img)))
+            hlist.append(imagehash.phash(Image.open(img)))
         except: pass
-
     df = pd.DataFrame(np.column_stack([flist, hlist]),
                       columns=['path','hash'])
     df.to_csv("data.csv", index=False)
@@ -244,19 +237,20 @@ def checkhashes():
     global temptk
     global df
     dupeiterator = 0
-    dupelist = []
+    dupelist = pd.DataFrame()
     found = 0
-    
-    hlist = df['hash'].tolist()
+    print("Checking: " + str(df.loc[q, 'path']))
+
     for i in range(len(df)):
         if df.loc[q, 'path'] != df.loc[i, 'path'] and \
-        df.loc[q, 'hash'] == df.loc[i, 'hash']:
+        abs(int(df.loc[q, 'hash'],16) - int(df.loc[i, 'hash'],16))<100000000000000:
+        #finding a value with acceptable amounts of false positives...
             df.loc[i, 'x'] = "X"
             found=1
-    if found == 1:
+    if found == 1:       
         dupelist = df.loc[df['x'] == "X"]
         print(dupelist)
-        print("Found:" + str(len(dupelist)))
+        print("Found:" + str(len(dupelist)) + " for \n" + str(df.loc[q, 'path']))
         cv2.destroyAllWindows()
         temptk = tk.Tk()
         w = 200 
@@ -282,7 +276,6 @@ def checkhashes():
         popupDupe(cv2.imread(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'],
                          cv2.IMREAD_UNCHANGED),
                   "Dupe?",1)
-
         temptk.lift()
         temptk.focus_force()
     else: print("No dupes found.")
@@ -292,21 +285,39 @@ def call_leaveit(event):
 
 def moveSrcFile():
     global df
-    print("MOVING: " + str(flist[q]))
+    global flist
+    print("MOVING SOURCE: " + str(flist[q]))
     moveFile(df.iloc[[q]]['path'])
     df.drop([q], 0, inplace=True)
-
+    df.to_csv("data.csv", index=False)
+    temptk.destroy()
+    cv2.destroyAllWindows()
+    attemptReadHashTable()
+    checkhashes()
+    
+def call_incrementq(event):
+    incrementq()
+    if hashonoff.get() == 1: 
+        checkhashes()
+        
 def moveDupFile():
     global df
-    print("MOVING: " + str(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path']))
+    global flist
+    print("MOVING DUPE: " + str(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path']))
     moveFile(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'])
-    df.drop([dupelist.iloc[[dupeiterator]].index.item()], 0, inplace=True)
+    #not sure if it's actually dropping...
+    df.drop([dupelist.index.values.astype(int)[0]], 0, inplace=True)
+    df.to_csv("data.csv", index=False)
+    temptk.destroy()
+    cv2.destroyAllWindows()
+    attemptReadHashTable()
+    checkhashes()
 
-
+    
 def moveFile(path):
     global temptk
     global dupeiterator
-    print("Moving: " + str(path))
+    global df
     fname = os.path.basename(path)
     shutil.move(path, folder_selected + "/del/" + fname)
     dupeiterator+=1
@@ -316,14 +327,17 @@ def moveFile(path):
                   "Dupe?",1)
     else:
         del df['x']
-        temptk.destroy()
-        cv2.destroyAllWindows()
+        try:
+            temptk.destroy()
+            cv2.destroyAllWindows()
+        except: pass
         incrementq()
         master.focus_force()
    
 def leaveFile():
     global temptk
     global dupeiterator
+    global df
     dupeiterator+=1
     if dupeiterator<len(dupelist):
         popupDupe(cv2.imread(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'],
@@ -331,8 +345,10 @@ def leaveFile():
                   "Dupe?",1)
     else:
         del df['x']
-        temptk.destroy()
-        cv2.destroyAllWindows()
+        try:
+            temptk.destroy()
+            cv2.destroyAllWindows()
+        except: pass
         incrementq()
         master.focus_force()
 
@@ -348,7 +364,19 @@ def popupDupe(img, name, scrn):
     cv2.resizeWindow(str(name), window_width, window_height)
     cv2.imshow(str(name), img)
 
-        
+def attemptReadHashTable():
+    global flist
+    global hlist
+    global df
+    try:
+        df = pd.read_csv("data.csv")
+        print("Hash table found!")
+        hlist = df['hash'].tolist()
+        flist = df['path'].tolist()
+    except:
+        df = pd.DataFrame()
+        print("No hash table found.")
+    
 global flist
 global hlist
 global q
@@ -358,13 +386,7 @@ q = 0
 master = tk.Tk()
 master.title("Picture Sorter")
 
-try:
-    df = pd.read_csv("data.csv")
-    hlist = df['hash'].tolist()
-    print("Hash table found!")
-except:
-    df = pd.DataFrame()
-    print("No hash table found.")
+attemptReadHashTable()
 
 fpath_str = tk.StringVar(master)
 folder = tk.Button(master, text="Select\nFolder", command=findFolder)
@@ -439,12 +461,18 @@ autoNextTask()
 
 if df.empty:
     hashes_button = tk.Button(master, text="Generate\nHashes", command=genhashes)
-    hashes_button.grid(row=6, column=1, sticky=N+E+S)
+    hashes_button.grid(row=7, column=1, sticky=N+E+S)
 else:
     hashes_button = tk.Button(master, text="Check\nHashes", command=checkhashes)
-    hashes_button.grid(row=6, column=1, sticky=N+E+S)
+    hashes_button.grid(row=7, column=1, sticky=N+E+S)
     master.bind("<Delete>", call_checkhashes)
-    
+
+hashonoff = tk.IntVar()
+hashcbox = tk.Checkbutton(master, text = "Check Hashes?", variable = hashonoff, \
+                 onvalue = 1, offvalue = 0, height=5, \
+                 width = 20)
+hashcbox.grid(row=7, column=2, sticky=N+E+S)
+
 master.bind("<Insert>", call_killimg)
 
 tk.mainloop()
