@@ -240,8 +240,12 @@ def checkhashes():
     dupeiterator = 0
     dupelist = pd.DataFrame()
     found = 0
+    df = pd.DataFrame()
+    attemptReadHashTable()
     print("Checking: " + str(df.loc[q, 'path']))
-
+    try: del df['x']
+    except: pass
+    
     for i in range(len(df)):
         if df.loc[q, 'path'] != df.loc[i, 'path'] and \
         abs(int(str(df.loc[q, 'hash']),16) - int(str(df.loc[i, 'hash']),16))<100000000000000:
@@ -252,6 +256,9 @@ def checkhashes():
         dupelist = df.loc[df['x'] == "X"]
         print(dupelist)
         print("Found:" + str(len(dupelist)) + " for \n" + str(df.loc[q, 'path']))
+
+        try: temptk.destroy()
+        except: pass   
         cv2.destroyAllWindows()
         temptk = tk.Tk()
         w = 200 
@@ -270,15 +277,19 @@ def checkhashes():
         moveon = tk.Button(temptk, text="Next", command=leaveFile)
         temptk.bind("<Insert>", call_leaveit)
         moveon.grid(row=2, column=0, sticky=N+W+E+S,pady=10)
-        print("Popping: " + str(flist[q]))
+        
+        print("Popping Source: " + str(flist[q]))
         popupDupe(cv2.imread(flist[q],
                          cv2.IMREAD_UNCHANGED),
-                  "Source",0)
+                  str("Source: " + os.path.basename(flist[q])),
+                  1)
 
-        print("Popping: " + str(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path']))
+        print("Popping Dupe: " + str(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path']))
         popupDupe(cv2.imread(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'],
                          cv2.IMREAD_UNCHANGED),
-                  "Dupe?",1)
+                  str("Dupe: " + os.path.basename(df.iloc[dupelist.iloc[[dupeiterator]].index.item(),:]['path'])),
+                  0)
+        
         temptk.lift()
         temptk.focus_force()
     else: print("No dupes found.")
@@ -290,14 +301,7 @@ def moveSrcFile():
     global df
     global flist
     print("MOVING SOURCE: " + str(df.loc[q]['path']))
-    moveFile(str(df.loc[q]['path']))
-    df = df.drop([q], 0)
-    del df['x']
-    df.to_csv("data.csv", index=False)
-    print("Hash table updated.")
-    temptk.destroy()
-    cv2.destroyAllWindows()
-    attemptReadHashTable()
+    moveFile(str(df.loc[q]['path']),q)
     checkhashes()
 
 def call_incrementq(event):
@@ -310,32 +314,28 @@ def moveDupFile():
     global flist
     print("MOVING DUPE: " + str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))
     index = int(dupelist.iloc[[dupeiterator]].index.to_numpy()[0])
-    moveFile(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip())
-    print("PATH: " + str(index, 'path'].to_string(index=False).strip()))
-    print("DF INDEX: " + str(index))
-    df = df.drop(index, 0)
-    del df['x']
-    df.to_csv("data.csv", index=False)
-    print("Hash table updated.")
-    temptk.destroy()
-    cv2.destroyAllWindows()
-    attemptReadHashTable()
+    moveFile(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip(),index)
     checkhashes()
 
-def moveFile(path):
+def moveFile(path, index):
     global temptk
     global dupeiterator
     global df
+    print("moveFile index: " + str(index))
     fname = os.path.basename(path)
     shutil.move(path, folder_selected + "/del/" + fname)
     dupeiterator+=1
+    df = df.drop(int(index), 0)    
+    df.to_csv("data.csv", index=False)
+    print("Hash table updated.")
+    
     if dupeiterator<len(dupelist):
-        print("Popping: " + str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))
-        popupDupe(cv2.imread(str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()),
+        print("Popping Dupe: " + str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))
+        pf = popupDupe(cv2.imread(str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()),
                          cv2.IMREAD_UNCHANGED),
-                  "Dupe?",1)
+        str("Dupe: " + os.path.basename(str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))),
+                      0)
     else:
-        del df['x']
         try:
             temptk.destroy()
             cv2.destroyAllWindows()
@@ -349,32 +349,37 @@ def leaveFile():
     global df
     dupeiterator+=1
     if dupeiterator<len(dupelist):
-        print("Popping: " + str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))
-        popupDupe(cv2.imread(str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()),
+        print("Popping Dupe: " + str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))
+        pf = popupDupe(cv2.imread(str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()),
                          cv2.IMREAD_UNCHANGED),
-                  "Dupe?",1)
+        str("Dupe: " + os.path.basename(str(df.loc[dupelist.iloc[[dupeiterator]].index.values, 'path'].to_string(index=False).strip()))),
+                       0)
     else:
-        del df['x']
         try:
             temptk.destroy()
-            cv2.destroyAllWindows()
+            cv2.destroyAllWindows()  
         except: pass
         incrementq()
         master.focus_force()
 
 def popupDupe(img, name, scrn):
-    try:
-        screen_id = scrn
-        screen = screeninfo.get_monitors()[screen_id]
-        scale_width = screen.width / img.shape[1]
-        scale_height = screen.height / img.shape[0]
-        scale = min(scale_width, scale_height)
-        window_width = int(img.shape[1] * scale)
-        window_height = int(img.shape[0] * scale)
-        cv2.namedWindow(str(name), cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(str(name), window_width, window_height)
-        cv2.imshow(str(name), img)
-    except: print("Issue: probably a bad index from drop")
+##    try:
+    screen_id = scrn
+    screen = screeninfo.get_monitors()[screen_id]
+    scale_width = screen.width / img.shape[1]
+    scale_height = screen.height / img.shape[0]
+    scale = min(scale_width, scale_height)
+    window_width = int(img.shape[1] * scale)
+    window_height = int(img.shape[0] * scale)
+    cv2.namedWindow(str(name), cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(str(name), window_width, window_height)
+    if scrn == 1:
+        cv2.moveWindow(str(name),0,0)
+    else:
+        cv2.moveWindow(str(name),1925,0)
+    cv2.imshow(str(name), img)
+    temptk.lift()
+    temptk.focus_force()
 
 def attemptReadHashTable():
     global flist
@@ -382,6 +387,7 @@ def attemptReadHashTable():
     global df
     try:
         df = pd.read_csv("data.csv")
+        df = df.reset_index(drop=True)
         print("Hash table found!")
         hlist = df['hash'].tolist()
         flist = df['path'].tolist()
