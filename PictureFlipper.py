@@ -248,8 +248,7 @@ def checkhashes():
     
     for i in range(len(df)):
         if df.loc[q, 'path'] != df.loc[i, 'path'] and \
-        abs(int(str(df.loc[q, 'hash']),16) - int(str(df.loc[i, 'hash']),16))<100000000000000:
-        #finding a value with acceptable amounts of false positives...
+        abs(int(str(df.loc[q, 'hash']),16) - int(str(df.loc[i, 'hash']),16))<20000000000000:
             df.loc[i, 'x'] = "X"
             found=1
     if found == 1:       
@@ -302,7 +301,7 @@ def moveSrcFile():
     global flist
     print("MOVING SOURCE: " + str(df.loc[q]['path']))
     moveFile(str(df.loc[q]['path']),q)
-    checkhashes()
+    showPrevImage()
 
 def call_incrementq(event):
     incrementq()
@@ -341,7 +340,8 @@ def moveFile(path, index):
             cv2.destroyAllWindows()
         except: pass
         incrementq()
-        master.focus_force()
+        checkhashes()
+##        master.focus_force()   
    
 def leaveFile():
     global temptk
@@ -360,7 +360,9 @@ def leaveFile():
             cv2.destroyAllWindows()  
         except: pass
         incrementq()
-        master.focus_force()
+        checkhashes()
+##        master.focus_force()
+        
 
 def popupDupe(img, name, scrn):
 ##    try:
